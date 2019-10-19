@@ -1,16 +1,87 @@
 var Service;
 var Characteristic;
 var execSync = require('child_process').execSync;
-  
+
+var tableauValve = [];
+var tableauSwitch = [];
+
 module.exports = function(homebridge) {
   Service = homebridge.hap.Service;
   Characteristic = homebridge.hap.Characteristic;
   homebridge.registerAccessory('homebridge-vanneCommande', 'VanneCommande', ValveCmdAccessory);
+  homebridge.registerAccessory('homebridge-switchCommande', 'SwitchCommande', SwitchCmdAccessory);
 };
+
+function SwitchCmdAccessory(log, config) {
+  this.log = log;
+  this.name = config.name;
+  this.indice = config.indice;
+  this.etatSwitch = false; //Etat initial
+
+  tableauSwitch[this.indice] = this;
+  
+  this.log('Fin SwicthmdAccessory');
+}
+
+
+SwitchCmdAccessory.prototype.setOn = function(estOn, callback, context) {
+  if (context === 'pollState') {
+    // The state has been updated by the pollState command - don't run the open/close command
+    callback(null);
+    return;
+  }
+
+  var accessory = this;
+  var accessoryValve = tableauValve[this.indice];
+
+  if(estOn) {
+    accessory.etatSwitch = true;
+    if(accessoryValve.etatValveDemande == Characteristic.Active.INACTIVE) {
+      accessoryValve.valveService.getCharacteristic(Characteristic.Active).setValue(Characteristic.Active.ACTIVE);
+    }
+    accessory.log('Appel de setOn : True');
+  } else {
+    accessory.etatSwitch = false;
+    if(accessoryValve.etatValveDemande == Characteristic.Active.ACTIVE) {
+      accessoryValve.valveService.getCharacteristic(Characteristic.Active).setValue(Characteristic.Active.INACTIVE);
+    }
+    accessory.log('Appel de setOn : False');
+  }
+
+  callback();
+  return true;
+};
+
+SwitchCmdAccessory.prototype.getOn = function(callback) {
+  var accessory = this;
+
+  accessory.log('Appel de getOn');
+  callback(null, accessory.etatSwitch);
+}
+
+SwitchCmdAccessory.prototype.getServices = function() {
+  this.log('Debut Getservices');
+  this.informationService = new Service.AccessoryInformation();
+  this.switchService = new Service.Switch(this.name);
+
+  this.informationService
+  .setCharacteristic(Characteristic.Manufacturer, 'Capitaine Kirk Factory')
+  .setCharacteristic(Characteristic.Model, 'Switch Command')
+  .setCharacteristic(Characteristic.SerialNumber, '1.0');
+
+  this.switchService.getCharacteristic(Characteristic.On)
+  .on('set', this.setOn.bind(this))
+  .on('get', this.getOn.bind(this))
+  .updateValue(this.etatSwitch);
+
+
+  return [this.informationService, this.switchService];
+}
 
 function ValveCmdAccessory(log, config) {
   this.log = log;
   this.name = config.name;
+  this.indice = config.indice;
   this.envoyerCommandeOuverture = config.envoyerCommandeOuverture;
   this.envoyerCommandeFermeture = config.envoyerCommandeFermeture;
   this.lireEtat = config.lireEtat;
@@ -18,8 +89,10 @@ function ValveCmdAccessory(log, config) {
   this.etatValveDemande = Characteristic.Active.INACTIVE; //Etat initial
   this.etatValveActuel = Characteristic.InUse.NOT_IN_USE; //Etat initial
   this.etatValveEnDefaut = Characteristic.StatusFault.NO_FAULT; //Etat initial
-  this.etatSwitch = false; //Etat initial
   this.debug = config.debug || 0;
+
+  tableauValve[this.indice] = this;
+  
   this.log('Fin ValveCmdAccessory');
 
  //A short summary for Active / InUse - Logic:
@@ -37,21 +110,22 @@ ValveCmdAccessory.prototype.setActive = function(estActive, callback, context) {
   }
 
   var accessory = this;
+  var accessorySwitch = tableauSwitch[this.indice];
 
 
   if(estActive == Characteristic.Active.ACTIVE) {
     accessory.etatValveDemande = Characteristic.Active.ACTIVE;
-    if(!accessory.etatSwitch) {
-      accessory.switchService.getCharacteristic(Characteristic.On).setValue(true);
-      //accessory.valveService.getCharacteristic(Characteristic.On).setValue(true);
+    if(!accessorySwitch.etatSwitch) {
+      //accessory.switchService.getCharacteristic(Characteristic.On).setValue(true);
+      accessorySwitch.switchService.getCharacteristic(Characteristic.On).setValue(true);
     }
     accessory.log('Appel de setActive : etatValveDemande = ACTIVE');
   }
   if(estActive == Characteristic.Active.INACTIVE) {
     accessory.etatValveDemande = Characteristic.Active.INACTIVE;
-    if(accessory.etatSwitch) {
-      accessory.switchService.getCharacteristic(Characteristic.On).setValue(false);
-      //accessory.valveService.getCharacteristic(Characteristic.On).setValue(false);
+    if(accessorySwitch.etatSwitch) {
+      //accessory.switchService.getCharacteristic(Characteristic.On).setValue(false);
+      accessorySwitch.switchService.getCharacteristic(Characteristic.On).setValue(false);
     }
     accessory.log('Appel de setActive : etatValveDemande = INACTIVE');
   }
@@ -128,42 +202,11 @@ ValveCmdAccessory.prototype.getStatusFault = function(callback) {
 }
 
 
-ValveCmdAccessory.prototype.setOn = function(estOn, callback, context) {
-  if (context === 'pollState') {
-    // The state has been updated by the pollState command - don't run the open/close command
-    callback(null);
-    return;
-  }
 
-  var accessory = this;
-
-
-  if(estOn) {
-    accessory.etatSwitch = true;
-    if(accessory.etatValveDemande == Characteristic.Active.INACTIVE) {
-      accessory.valveService.getCharacteristic(Characteristic.Active).setValue(Characteristic.Active.ACTIVE);
-    }
-    accessory.log('Appel de setOn : True');
-  } else {
-    accessory.etatSwitch = false;
-    if(accessory.etatValveDemande == Characteristic.Active.ACTIVE) {
-      accessory.valveService.getCharacteristic(Characteristic.Active).setValue(Characteristic.Active.INACTIVE);
-    }
-    accessory.log('Appel de setOn : False');
-  }
-
-  callback();
-  return true;
-};
-
-ValveCmdAccessory.prototype.getOn = function(callback) {
-  var accessory = this;
-
-  accessory.log('Appel de getOn');
-  callback(null, accessory.etatSwitch);
-}
 ValveCmdAccessory.prototype.monitorState = function() {
   var accessory = this;
+  var accessorySwitch = tableauSwitch[this.indice];
+
   var capteurValveOuvert = false;
   var capteurValveEnDefaut = false;
   var lectureCapteur = '';
@@ -174,7 +217,7 @@ ValveCmdAccessory.prototype.monitorState = function() {
   var delaiSupplementaire = 0;
 
   if(accessory.debug) {
-    if(accessory.etatSwitch) {
+    if(accessorySwitch.etatSwitch) {
       accessory.log("etatSwtch = ON");
     } else {
       accessory.log("etatSwtch = OFF");
@@ -283,8 +326,8 @@ ValveCmdAccessory.prototype.getServices = function() {
   this.log('Debut Getservices');
   this.informationService = new Service.AccessoryInformation();
   this.valveService = new Service.Valve(this.name);
-  this.switchService = new Service.Switch(this.name);
-  this.StatelessProgrammableSwitch = new Service.StatelessProgrammableSwitch(this.name);
+  //this.switchService = new Service.Switch(this.name);
+  //this.StatelessProgrammableSwitch = new Service.StatelessProgrammableSwitch(this.name);
 
   this.informationService
   .setCharacteristic(Characteristic.Manufacturer, 'Capitaine Kirk Factory')
@@ -317,16 +360,8 @@ ValveCmdAccessory.prototype.getServices = function() {
   .on('get', this.getStatusFault.bind(this))
   .updateValue(this.etatValveEnDefaut);
 
-  this.log("UUID = ",Characteristic.On.UUID);
-
-  this.switchService.getCharacteristic(Characteristic.On)
-  //this.valveService.addCharacteristic(Characteristic.On)
-  .on('set', this.setOn.bind(this))
-  .on('get', this.getOn.bind(this))
-  .updateValue(this.etatSwitch);
-
   this.stateTimer = setTimeout(this.monitorState.bind(this),this.intervalLecture * 1000);
 
-  return [this.informationService, this.valveService, this.switchService, this.StatelessProgrammableSwitch];
-  //return [this.informationService, this.valveService];
+//  return [this.informationService, this.valveService, this.switchService, this.StatelessProgrammableSwitch];
+  return [this.informationService, this.valveService];
 };
