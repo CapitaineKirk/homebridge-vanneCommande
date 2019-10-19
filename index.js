@@ -1,9 +1,11 @@
+
 var Service;
 var Characteristic;
 var execSync = require('child_process').execSync;
 
 var tableauValve = [];
 var tableauSwitch = [];
+BlockingQueue<Integer> queue[10];
 
 module.exports = function(homebridge) {
   Service = homebridge.hap.Service;
@@ -92,7 +94,8 @@ function ValveCmdAccessory(log, config) {
   this.debug = config.debug || 0;
 
   tableauValve[this.indice] = this;
-  
+  queue[this.indice] = new ArrayBlockingQueue(1024);
+
   this.log('Fin ValveCmdAccessory');
 
  //A short summary for Active / InUse - Logic:
@@ -202,6 +205,12 @@ ValveCmdAccessory.prototype.getStatusFault = function(callback) {
 }
 
 
+ValveCmdAccessory.prototype.timer = function() {
+  var accessory = this;
+
+  queue[0].offer("1");
+  accessory.periodiqueTimer = setTimeout(this.timer.bind(this),(accessory.intervalLecture + delaiSupplementaire) * 1000);
+}
 
 ValveCmdAccessory.prototype.monitorState = function() {
   var accessory = this;
@@ -216,6 +225,8 @@ ValveCmdAccessory.prototype.monitorState = function() {
   var etatActuelFutur;
   var delaiSupplementaire = 0;
 
+  while(1) {
+    message = queue[0].take();
   if(accessory.debug) {
     if(accessorySwitch.etatSwitch) {
       accessory.log("etatSwtch = ON");
@@ -319,7 +330,8 @@ ValveCmdAccessory.prototype.monitorState = function() {
     clearTimeout(accessory.stateTimer);
     accessory.stateTimer = null;
   }
-  accessory.stateTimer = setTimeout(this.monitorState.bind(this),(accessory.intervalLecture + delaiSupplementaire) * 1000);
+  }
+  //accessory.stateTimer = setTimeout(this.monitorState.bind(this),(accessory.intervalLecture + delaiSupplementaire) * 1000);
 };
 
 ValveCmdAccessory.prototype.getServices = function() {
@@ -360,7 +372,8 @@ ValveCmdAccessory.prototype.getServices = function() {
   .on('get', this.getStatusFault.bind(this))
   .updateValue(this.etatValveEnDefaut);
 
-  this.stateTimer = setTimeout(this.monitorState.bind(this),this.intervalLecture * 1000);
+  this.stateTimer = setTimeout(this.monitorState.bind(this),0);
+  this.periodiqueTimer = setTimeout(this.timer.bind(this),this.intervalLecture * 1000);
 
 //  return [this.informationService, this.valveService, this.switchService, this.StatelessProgrammableSwitch];
   return [this.informationService, this.valveService];
