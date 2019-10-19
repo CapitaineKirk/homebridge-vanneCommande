@@ -39,7 +39,8 @@ SwitchCmdAccessory.prototype.setOn = function(estOn, callback, context) {
   if(estOn) {
     accessory.etatSwitch = true;
     if(accessoryValve.etatValveDemande == Characteristic.Active.INACTIVE) {
-      accessory.modeManuel = false;
+      accessoryValve.modeManuel = false;
+      accessory.log("mode Manuel = false");
       accessoryValve.valveService.getCharacteristic(Characteristic.Active).setValue(Characteristic.Active.ACTIVE);
     }
     accessory.log('Appel de setOn : True');
@@ -125,6 +126,7 @@ ValveCmdAccessory.prototype.setActive = function(estActive, callback, context) {
     accessory.etatValveDemande = Characteristic.Active.ACTIVE;
     if(!accessorySwitch.etatSwitch) {
       accessory.modeManuel = true;
+      accessory.log("mode Manuel = true");
       //accessory.switchService.getCharacteristic(Characteristic.On).setValue(true);
       accessorySwitch.switchService.getCharacteristic(Characteristic.On).setValue(true);
     }
@@ -312,18 +314,13 @@ ValveCmdAccessory.prototype.monitorState = function() {
     accessory.dureeRestante = accessory.dureeDemandee - deltaSecondes;;
 
     if(accessory.debug) {
-      accessory.log("Temps écoulé = "+ deltaSecondes + " s, temps restant = " + tempsRestant + " s");
+      accessory.log("Temps écoulé = "+ deltaSecondes + " s, temps restant = " + accessory.dureeRestante + " s");
     }
 
     if(accessory.dureeRestante < 0) {
       accessory.log("Fin du délai d'arrosage");
       accessory.log("Etat demande de " + accessory.name + " est : INACTIVE");
-      commande = accessory.envoyerCommandeFermeture;
-      accessory.etatValveDemande = Characteristic.Active.INACTIVE;
-      etatActuelFutur = Characteristic.InUse.NOT_IN_USE;
-      valveChange = true;
-    } else {
-      accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).setValue(accessory.dureeRestante);
+      accessory.valveService.getCharacteristic(Characteristic.Active).setValue(Characteristic.Active.INACTIVE);
     }
   }
 
@@ -341,12 +338,19 @@ ValveCmdAccessory.prototype.monitorState = function() {
         accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
         delaiSupplementaire = 1;
         accessory.dateDebut = new Date();
+        // si mode manuel et duree demandee != 0
+        if((accessory.modeManuel) && (accessory.dureeDemandee != 0)) {
+          accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(accessory.dureeDemandee);
+          accessory.log("Mode manuel, durée demandée = " + accessory.dureeDemandee + " s");
+        }
         accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (ON)');
 
         break;
       case 'OF' :
         accessory.etatValveActuel = etatActuelFutur;
         accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
+        // ne pas oublier de remettre a zero le compteur de temps restant
+        accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(0);
         delaiSupplementaire = 1;
         accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (OFF)');
       break;
