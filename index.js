@@ -1,11 +1,11 @@
-
 var Service;
 var Characteristic;
 var execSync = require('child_process').execSync;
 
 var tableauValve = [];
 var tableauSwitch = [];
-BlockingQueue<Integer> queue[10];
+
+const date = require('date-and-time');
 
 module.exports = function(homebridge) {
   Service = homebridge.hap.Service;
@@ -39,6 +39,7 @@ SwitchCmdAccessory.prototype.setOn = function(estOn, callback, context) {
   if(estOn) {
     accessory.etatSwitch = true;
     if(accessoryValve.etatValveDemande == Characteristic.Active.INACTIVE) {
+      accessory.modeManuel = false;
       accessoryValve.valveService.getCharacteristic(Characteristic.Active).setValue(Characteristic.Active.ACTIVE);
     }
     accessory.log('Appel de setOn : True');
@@ -87,15 +88,19 @@ function ValveCmdAccessory(log, config) {
   this.envoyerCommandeOuverture = config.envoyerCommandeOuverture;
   this.envoyerCommandeFermeture = config.envoyerCommandeFermeture;
   this.lireEtat = config.lireEtat;
+  this.dureeDemandee = config.dureeDemandee || 0;
   this.intervalLecture = config.intervalLecture || 1;
   this.etatValveDemande = Characteristic.Active.INACTIVE; //Etat initial
   this.etatValveActuel = Characteristic.InUse.NOT_IN_USE; //Etat initial
   this.etatValveEnDefaut = Characteristic.StatusFault.NO_FAULT; //Etat initial
+  this.capteurValveOuvert = false;
+  this.capteurValveEnDefaut = false;
+  this.compteurBoucle = 0;
+  this.modeManuel = false;
   this.debug = config.debug || 0;
 
   tableauValve[this.indice] = this;
-  queue[this.indice] = new ArrayBlockingQueue(1024);
-
+  
   this.log('Fin ValveCmdAccessory');
 
  //A short summary for Active / InUse - Logic:
@@ -119,6 +124,7 @@ ValveCmdAccessory.prototype.setActive = function(estActive, callback, context) {
   if(estActive == Characteristic.Active.ACTIVE) {
     accessory.etatValveDemande = Characteristic.Active.ACTIVE;
     if(!accessorySwitch.etatSwitch) {
+      accessory.modeManuel = true;
       //accessory.switchService.getCharacteristic(Characteristic.On).setValue(true);
       accessorySwitch.switchService.getCharacteristic(Characteristic.On).setValue(true);
     }
@@ -205,19 +211,11 @@ ValveCmdAccessory.prototype.getStatusFault = function(callback) {
 }
 
 
-ValveCmdAccessory.prototype.timer = function() {
-  var accessory = this;
-
-  queue[0].offer("1");
-  accessory.periodiqueTimer = setTimeout(this.timer.bind(this),(accessory.intervalLecture + delaiSupplementaire) * 1000);
-}
 
 ValveCmdAccessory.prototype.monitorState = function() {
   var accessory = this;
   var accessorySwitch = tableauSwitch[this.indice];
 
-  var capteurValveOuvert = false;
-  var capteurValveEnDefaut = false;
   var lectureCapteur = '';
   var valveChange = false;
   var lectureCommande = '';
@@ -225,8 +223,6 @@ ValveCmdAccessory.prototype.monitorState = function() {
   var etatActuelFutur;
   var delaiSupplementaire = 0;
 
-  while(1) {
-    message = queue[0].take();
   if(accessory.debug) {
     if(accessorySwitch.etatSwitch) {
       accessory.log("etatSwtch = ON");
@@ -239,44 +235,52 @@ ValveCmdAccessory.prototype.monitorState = function() {
     } else {
       accessory.log("etatValveActive = INACTIVE");
     }
-  }
 
-  if(accessory.debug) {
+    if(accessory.modeManuel) {
+      accessory.log('Mode manuel');
+    } else {
+      accessory.log('Mode automatique');
+    }
     accessory.log('Commnande executée : ' + accessory.lireEtat);
   }
-  try {
-    buffer = execSync(accessory.lireEtat);
-    lectureCapteur = buffer.toString('utf-8').substring(0,2);
-  } catch(exception) {
-    accessory.log("Erreur lecture de l'etat :" + exception.sdout);
-    LectureCapteur = '';
-  }
-  switch(lectureCapteur) {
-    case 'ON' : 
-      capteurValveOuvert = true;
-      capteurValveEnDefaut = false;
-      if(accessory.debug) {
-        accessory.log('Etat du capteur de ' + accessory.name + ' est (ON) : ' + lectureCapteur + '(' + capteurValveOuvert + ')');
-      }
-      break;
-    case 'OF' :
-      capteurValveOuvert = false;
-      capteurValveEnDefaut = false;
-      if(accessory.debug) {
-        accessory.log('Etat du capteur de ' + accessory.name + ' est (OFF) : ' + lectureCapteur + '(' + capteurValveOuvert + ')');
-      }
-      break;
-    default :
-      capteurValveEnDefaut = true;
-      if(accessory.debug) {
-        accessory.log('Etat du capteur de ' + accessory.name + ' est (KO) : ' + lectureCapteur + '(' + capteurValveEnDefaut + ')');
-      }
-      break;
-  }
 
-  if ((capteurValveEnDefaut && (accessory.etatValveEnDefaut == Characteristic.StatusFault.NO_FAULT)) ||
-      (!capteurValveEnDefaut && (accessory.etatValveEnDefaut == Characteristic.StatusFault.GENERAL_FAULT))) {
-    if(capteurValveEnDefaut) {
+  if(accessory.compteurBoucle == 0) {
+    try {
+      buffer = execSync(accessory.lireEtat);
+      lectureCapteur = buffer.toString('utf-8').substring(0,2);
+    } catch(exception) {
+      accessory.log("Erreur lecture de l'etat :" + exception.sdout);
+      LectureCapteur = '';
+    }
+    switch(lectureCapteur) {
+      case 'ON' : 
+        accessory.capteurValveOuvert = true;
+        accessory.capteurValveEnDefaut = false;
+        if(accessory.debug) {
+          accessory.log('Etat du capteur de ' + accessory.name + ' est (ON) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
+        }
+        break;
+      case 'OF' :
+        accessory.capteurValveOuvert = false;
+        accessory.capteurValveEnDefaut = false;
+        if(accessory.debug) {
+          accessory.log('Etat du capteur de ' + accessory.name + ' est (OFF) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
+        }
+        break;
+      default :
+        accessory.capteurValveEnDefaut = true;
+        if(accessory.debug) {
+          accessory.log('Etat du capteur de ' + accessory.name + ' est (KO) : ' + lectureCapteur + '(' + accessory.capteurValveEnDefaut + ')');
+        }
+        break;
+    }
+    accessory.compteurBoucle = 10;
+  }
+  accessory.compteurBoucle--;
+
+  if ((accessory.capteurValveEnDefaut && (accessory.etatValveEnDefaut == Characteristic.StatusFault.NO_FAULT)) ||
+      (!accessory.capteurValveEnDefaut && (accessory.etatValveEnDefaut == Characteristic.StatusFault.GENERAL_FAULT))) {
+    if(accessory.capteurValveEnDefaut) {
       accessory.log("Etat defaut de " + accessory.name + " est : GENRAL_FAULT");
       accessory.etatValveEnDefaut = Characteristic.StatusFault.GENERAL_FAULT;
     } else {
@@ -286,18 +290,40 @@ ValveCmdAccessory.prototype.monitorState = function() {
     accessory.valveService.getCharacteristic(Characteristic.StatusFault).updateValue(this.etatValveEnDefaut);
   }
 
-  if(!capteurValveEnDefaut) {
-    if(capteurValveOuvert && (accessory.etatValveDemande == Characteristic.Active.INACTIVE)) {
+  if(!accessory.capteurValveEnDefaut) {
+    if(accessory.capteurValveOuvert && (accessory.etatValveDemande == Characteristic.Active.INACTIVE)) {
         accessory.log("Etat demande de " + accessory.name + " est : INACTIVE");
         commande = accessory.envoyerCommandeFermeture;
         etatActuelFutur = Characteristic.InUse.NOT_IN_USE;
         valveChange = true;
     }
-    if(!capteurValveOuvert && (accessory.etatValveDemande == Characteristic.Active.ACTIVE)) {
+    if(!accessory.capteurValveOuvert && (accessory.etatValveDemande == Characteristic.Active.ACTIVE)) {
         accessory.log("Etat demande de " + accessory.name + " est : ACTIVE");
         commande = accessory.envoyerCommandeOuverture;
         etatActuelFutur = Characteristic.InUse.IN_USE;
         valveChange = true;
+    }
+  }
+
+  if((accessory.etatValveActuel == Characteristic.InUse.IN_USE) && (accessory.modeManuel) && (accessory.dureeDemandee != 0)) {
+    var dateActuelle = new Date();
+    var deltaSecondes = date.subtract(dateActuelle, accessory.dateDebut).toSeconds();
+
+    accessory.dureeRestante = accessory.dureeDemandee - deltaSecondes;;
+
+    if(accessory.debug) {
+      accessory.log("Temps écoulé = "+ deltaSecondes + " s, temps restant = " + tempsRestant + " s");
+    }
+
+    if(accessory.dureeRestante < 0) {
+      accessory.log("Fin du délai d'arrosage");
+      accessory.log("Etat demande de " + accessory.name + " est : INACTIVE");
+      commande = accessory.envoyerCommandeFermeture;
+      accessory.etatValveDemande = Characteristic.Active.INACTIVE;
+      etatActuelFutur = Characteristic.InUse.NOT_IN_USE;
+      valveChange = true;
+    } else {
+      accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).setValue(accessory.dureeRestante);
     }
   }
 
@@ -310,19 +336,25 @@ ValveCmdAccessory.prototype.monitorState = function() {
       LectureCommande = '';
     }
     switch(lectureCommande) {
-      case 'OK' : 
+      case 'ON' : 
         accessory.etatValveActuel = etatActuelFutur;
         accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
         delaiSupplementaire = 1;
-        accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (OK)');
+        accessory.dateDebut = new Date();
+        accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (ON)');
+
         break;
-      case 'KO' :
-        accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (KO)');
+      case 'OF' :
+        accessory.etatValveActuel = etatActuelFutur;
+        accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
+        delaiSupplementaire = 1;
+        accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (OFF)');
       break;
       default :
         accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (inconnu) : ' + lectureCommande);
        break;
     }
+    accessory.compteurBoucle = 0;
   }
 
   // Clear any existing timer
@@ -330,25 +362,25 @@ ValveCmdAccessory.prototype.monitorState = function() {
     clearTimeout(accessory.stateTimer);
     accessory.stateTimer = null;
   }
-  }
-  //accessory.stateTimer = setTimeout(this.monitorState.bind(this),(accessory.intervalLecture + delaiSupplementaire) * 1000);
+  accessory.stateTimer = setTimeout(this.monitorState.bind(this),(accessory.intervalLecture + delaiSupplementaire) * 1000);
 };
 
 ValveCmdAccessory.prototype.getServices = function() {
   this.log('Debut Getservices');
   this.informationService = new Service.AccessoryInformation();
   this.valveService = new Service.Valve(this.name);
-  //this.switchService = new Service.Switch(this.name);
-  //this.StatelessProgrammableSwitch = new Service.StatelessProgrammableSwitch(this.name);
 
+  this.log('Debut informationService');
   this.informationService
   .setCharacteristic(Characteristic.Manufacturer, 'Capitaine Kirk Factory')
   .setCharacteristic(Characteristic.Model, 'Valve Command')
   .setCharacteristic(Characteristic.SerialNumber, '1.0');
 
   // choisi l'icone d'arrosage
+  this.log('Debut ValveType');
   this.valveService.getCharacteristic(Characteristic.ValveType).updateValue(Characteristic.ValveType.IRRIGATION);
 
+  this.log('Debut getCharacteristicActive');
   this.valveService.getCharacteristic(Characteristic.Active)
   .on('set', this.setActive.bind(this))
   .on('get', this.getActive.bind(this))
@@ -372,9 +404,9 @@ ValveCmdAccessory.prototype.getServices = function() {
   .on('get', this.getStatusFault.bind(this))
   .updateValue(this.etatValveEnDefaut);
 
-  this.stateTimer = setTimeout(this.monitorState.bind(this),0);
-  this.periodiqueTimer = setTimeout(this.timer.bind(this),this.intervalLecture * 1000);
+  this.stateTimer = setTimeout(this.monitorState.bind(this),this.intervalLecture * 1000);
 
 //  return [this.informationService, this.valveService, this.switchService, this.StatelessProgrammableSwitch];
-  return [this.informationService, this.valveService];
-};
+
+    return [this.informationService, this.valveService];
+}
