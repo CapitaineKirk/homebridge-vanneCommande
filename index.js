@@ -1,11 +1,14 @@
 var Service;
 var Characteristic;
-var execSync = require('child_process').execSync;
+var net = require('net');
 
 var tableauValve = [];
 var tableauSwitch = [];
 
 const date = require('date-and-time');
+const TCP_PORT = 6722;
+const TCP_CMD_STATUS ="00";
+const TCP_TIMEOUT = 500;
 
 module.exports = function(homebridge) {
   Service = homebridge.hap.Service;
@@ -24,7 +27,6 @@ function SwitchCmdAccessory(log, config) {
   
   this.log('Fin SwicthmdAccessory');
 }
-
 
 SwitchCmdAccessory.prototype.setOn = function(estOn, callback, context) {
   if (context === 'pollState') {
@@ -85,10 +87,9 @@ SwitchCmdAccessory.prototype.getServices = function() {
 function ValveCmdAccessory(log, config) {
   this.log = log;
   this.name = config.name;
+  this.adresseIp = config.adresseIp;
+  this.relais = config.relais;
   this.indice = config.indice;
-  this.envoyerCommandeOuverture = config.envoyerCommandeOuverture;
-  this.envoyerCommandeFermeture = config.envoyerCommandeFermeture;
-  this.lireEtat = config.lireEtat;
   this.dureeDemandee = config.dureeDemandee || 0;
   this.intervalLecture = config.intervalLecture || 1;
   this.etatValveDemande = Characteristic.Active.INACTIVE; //Etat initial
@@ -96,8 +97,8 @@ function ValveCmdAccessory(log, config) {
   this.etatValveEnDefaut = Characteristic.StatusFault.NO_FAULT; //Etat initial
   this.capteurValveOuvert = false;
   this.capteurValveEnDefaut = false;
-  this.compteurBoucle = 0;
   this.modeManuel = false;
+
   this.debug = config.debug || 0;
 
   tableauValve[this.indice] = this;
@@ -212,7 +213,74 @@ ValveCmdAccessory.prototype.getStatusFault = function(callback) {
   callback(null, accessory.etatEnDefaut);
 }
 
+ValveCmdAccessory.prototype.handleEventConnect = function() {
+  this.log('Evenement connexion');
+  if (this.stateTimer) {
+    clearTimeout(this.stateTimer);
+    this.stateTimer = null;
+  }
+  this.stateTimer = setImmediate(this.QueryState.bind(this));
+}
 
+ValveCmdAccessory.prototype.handleEventTimeout = function() {
+  this.log('Evenement timeout');
+  this.socket.connect(TCP_PORT, this.adresseIp);
+}
+
+ValveCmdAccessory.prototype.handleEventError = function(error) {
+  this.log('Evenement error (' + error.code + ')');
+}
+
+ValveCmdAccessory.prototype.handleEventClose = function() {
+  this.log('Evenement close');
+  this.socket.connect(TCP_PORT, this.adresseIp);
+}
+
+ValveCmdAccessory.prototype.handleEventData = function(data) {
+  if(this.debug) {
+    this.log('Evenement data');
+  }
+
+	try {
+		this.lectureCapteur = data.toString('utf-8').substring(this.relais-1,1);
+	} catch(exception) {
+		this.log("Erreur lecture de l'etat :" + exception.sdout);
+		this.lectureCapteur = '';
+	}
+  if(this.debug) {
+    this.log('Donnees : ' + this.lectureCapteur);
+  }
+  if (this.stateTimer) {
+    clearTimeout(this.stateTimer);
+    this.stateTimer = null;
+  }
+  this.stateTimer = setImmediate(this.monitorState.bind(this));
+}
+
+ValveCmdAccessory.prototype.handleEventEnd = function() {
+  this.log('Evenement end');
+}
+
+ValveCmdAccessory.prototype.QueryState = function() {
+  if(this.debug) {
+    this.log('Interrogation du capteur');
+  }
+  if(!this.socket.write(TCP_CMD_STATUS)){
+    if(this.debug) {
+      this.log('Interrogation ratee');
+    }
+    this.lectureCapteur = '';
+    if (this.stateTimer) {
+      clearTimeout(this.stateTimer);
+      this.stateTimer = null;
+    }
+    this.stateTimer = setImmediate(this.monitorState.bind(this));
+  } else {
+    if(this.debug) {
+      this.log('Interrogation reussie');
+    }
+  }
+}
 
 ValveCmdAccessory.prototype.monitorState = function() {
   var accessory = this;
@@ -220,16 +288,12 @@ ValveCmdAccessory.prototype.monitorState = function() {
 
   var lectureCapteur = '';
   var valveChange = false;
-  var lectureCommande = '';
-  var commande;
-  var etatActuelFutur;
-  var delaiSupplementaire = 0;
 
   if(accessory.debug) {
     if(accessorySwitch.etatSwitch) {
-      accessory.log("etatSwtch = ON");
+      accessory.log("etatSwitch = ON");
     } else {
-      accessory.log("etatSwtch = OFF");
+      accessory.log("etatSwitch = OFF");
     }
 
     if(accessory.etatValveDemande == Characteristic.Active.ACTIVE) {
@@ -243,47 +307,35 @@ ValveCmdAccessory.prototype.monitorState = function() {
     } else {
       accessory.log('Mode automatique');
     }
-    accessory.log('Commnande executée : ' + accessory.lireEtat);
   }
 
-  if(accessory.compteurBoucle == 0) {
-    try {
-      buffer = execSync(accessory.lireEtat);
-      lectureCapteur = buffer.toString('utf-8').substring(0,2);
-    } catch(exception) {
-      accessory.log("Erreur lecture de l'etat :" + exception.sdout);
-      LectureCapteur = '';
-    }
-    switch(lectureCapteur) {
-      case 'ON' : 
-        accessory.capteurValveOuvert = true;
-        accessory.capteurValveEnDefaut = false;
-        if(accessory.debug) {
-          accessory.log('Etat du capteur de ' + accessory.name + ' est (ON) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
-        }
-        break;
-      case 'OF' :
-        accessory.capteurValveOuvert = false;
-        accessory.capteurValveEnDefaut = false;
-        if(accessory.debug) {
-          accessory.log('Etat du capteur de ' + accessory.name + ' est (OFF) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
-        }
-        break;
-      default :
-        accessory.capteurValveEnDefaut = true;
-        if(accessory.debug) {
-          accessory.log('Etat du capteur de ' + accessory.name + ' est (KO) : ' + lectureCapteur + '(' + accessory.capteurValveEnDefaut + ')');
-        }
-        break;
-    }
-    accessory.compteurBoucle = 10;
-  }
-  accessory.compteurBoucle--;
+	switch(accessory.lectureCapteur) {
+		case '1' :
+			accessory.capteurValveOuvert = true;
+			accessory.capteurValveEnDefaut = false;
+			if(accessory.debug) {
+				accessory.log('Etat du capteur de ' + accessory.name + ' est (ON) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
+			}
+			break;
+		case '0' :
+			accessory.capteurValveOuvert = false;
+			accessory.capteurValveEnDefaut = false;
+			if(accessory.debug) {
+				accessory.log('Etat du capteur de ' + accessory.name + ' est (OFF) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
+			}
+			break;
+		default :
+			accessory.capteurValveEnDefaut = true;
+			if(accessory.debug) {
+				accessory.log('Etat du capteur de ' + accessory.name + ' est (KO) : ' + lectureCapteur + '(' + accessory.capteurValveEnDefaut + ')');
+			}
+			break;
+	}
 
   if ((accessory.capteurValveEnDefaut && (accessory.etatValveEnDefaut == Characteristic.StatusFault.NO_FAULT)) ||
       (!accessory.capteurValveEnDefaut && (accessory.etatValveEnDefaut == Characteristic.StatusFault.GENERAL_FAULT))) {
     if(accessory.capteurValveEnDefaut) {
-      accessory.log("Etat defaut de " + accessory.name + " est : GENRAL_FAULT");
+      accessory.log("Etat defaut de " + accessory.name + " est : GENERAL_FAULT");
       accessory.etatValveEnDefaut = Characteristic.StatusFault.GENERAL_FAULT;
     } else {
       accessory.log("Etat defaut de " + accessory.name + " est : NO_FAULT");
@@ -293,17 +345,37 @@ ValveCmdAccessory.prototype.monitorState = function() {
   }
 
   if(!accessory.capteurValveEnDefaut) {
-    if(accessory.capteurValveOuvert && (accessory.etatValveDemande == Characteristic.Active.INACTIVE)) {
+    
+    if(accessory.capteurValveOuvert) {
+      if(accessory.etatValveDemande == Characteristic.Active.INACTIVE) {
         accessory.log("Etat demande de " + accessory.name + " est : INACTIVE");
-        commande = accessory.envoyerCommandeFermeture;
-        etatActuelFutur = Characteristic.InUse.NOT_IN_USE;
+        commande = '2' + this.relais;
         valveChange = true;
-    }
-    if(!accessory.capteurValveOuvert && (accessory.etatValveDemande == Characteristic.Active.ACTIVE)) {
+      } else {
+        if(accessory.etatValveActuel != Characteristic.InUse.IN_USE) {
+          accessory.etatValveActuel = Characteristic.InUse.IN_USE;
+          accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
+					accessory.dateDebut = new Date();
+					// si mode manuel et duree demandee != 0
+					if((accessory.modeManuel) && (accessory.dureeDemandee != 0)) {
+						accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(accessory.dureeDemandee);
+						accessory.log("Mode manuel, durée demandée = " + accessory.dureeDemandee + " s");
+					}
+        }
+      }
+    } else {
+      if(accessory.etatValveDemande == Characteristic.Active.ACTIVE) {
         accessory.log("Etat demande de " + accessory.name + " est : ACTIVE");
-        commande = accessory.envoyerCommandeOuverture;
-        etatActuelFutur = Characteristic.InUse.IN_USE;
+        commande = '1' + this.relais;
         valveChange = true;
+      } else {
+        if(accessory.etatValveActuel != Characteristic.InUse.NOT_IN_USE) {
+          accessory.etatValveActuel = Characteristic.InUse.NOT_IN_USE;
+          accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
+					// ne pas oublier de remettre a zero le compteur de temps restant
+					accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(0);
+        }
+      }
     }
   }
 
@@ -326,39 +398,10 @@ ValveCmdAccessory.prototype.monitorState = function() {
 
   if(valveChange) {
     try {
-      buffer = execSync(commande);
-      lectureCommande = buffer.toString('utf-8').substring(0,2);
+      accessory.socket.write(commande);
     } catch(exception) {
 	    accessory.log("Erreur d\'exécution de la commande : " + exception.sdout);
-      LectureCommande = '';
     }
-    switch(lectureCommande) {
-      case 'ON' : 
-        accessory.etatValveActuel = etatActuelFutur;
-        accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
-        delaiSupplementaire = 1;
-        accessory.dateDebut = new Date();
-        // si mode manuel et duree demandee != 0
-        if((accessory.modeManuel) && (accessory.dureeDemandee != 0)) {
-          accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(accessory.dureeDemandee);
-          accessory.log("Mode manuel, durée demandée = " + accessory.dureeDemandee + " s");
-        }
-        accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (ON)');
-
-        break;
-      case 'OF' :
-        accessory.etatValveActuel = etatActuelFutur;
-        accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
-        // ne pas oublier de remettre a zero le compteur de temps restant
-        accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(0);
-        delaiSupplementaire = 1;
-        accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (OFF)');
-      break;
-      default :
-        accessory.log('Commande pour ' + accessory.name + ' terminee avec le statut (inconnu) : ' + lectureCommande);
-       break;
-    }
-    accessory.compteurBoucle = 0;
   }
 
   // Clear any existing timer
@@ -366,8 +409,8 @@ ValveCmdAccessory.prototype.monitorState = function() {
     clearTimeout(accessory.stateTimer);
     accessory.stateTimer = null;
   }
-  accessory.stateTimer = setTimeout(this.monitorState.bind(this),(accessory.intervalLecture + delaiSupplementaire) * 1000);
-};
+  accessory.stateTimer = setTimeout(this.QueryState.bind(this),(accessory.intervalLecture) * 1000);
+}
 
 ValveCmdAccessory.prototype.getServices = function() {
   this.log('Debut Getservices');
@@ -408,9 +451,19 @@ ValveCmdAccessory.prototype.getServices = function() {
   .on('get', this.getStatusFault.bind(this))
   .updateValue(this.etatValveEnDefaut);
 
-  this.stateTimer = setTimeout(this.monitorState.bind(this),this.intervalLecture * 1000);
+  this.socket = new net.Socket();
+  this.socket.setTimeout(TCP_TIMEOUT);
+  this.socket.on('connect',this.handleEventConnect.bind(this))
+  this.socket.on('timeout',this.handleEventTimeout.bind(this))
+  this.socket.on('error',this.handleEventError.bind(this))
+  this.socket.on('close',this.handleEventClose.bind(this))
+  this.socket.on('data',this.handleEventData.bind(this))
+  this.socket.on('end',this.handleEventEnd.bind(this))
 
-//  return [this.informationService, this.valveService, this.switchService, this.StatelessProgrammableSwitch];
+  this.log('Connexion a ' + this.adresseIp);
+  this.socket.connect(TCP_PORT, this.adresseIp);
 
-    return [this.informationService, this.valveService];
+  this.stateTimer = setTimeout(this.QueryState.bind(this),this.intervalLecture * 1000);
+
+  return [this.informationService, this.valveService];
 }
