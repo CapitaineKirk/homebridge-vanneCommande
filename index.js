@@ -242,7 +242,7 @@ ValveCmdAccessory.prototype.handleEventData = function(data) {
   }
 
 	try {
-		this.lectureCapteur = data.toString('utf-8').substring(this.relais-1,1);
+		this.lectureCapteur = data.toString('utf-8').substring(this.relais-1,this.relais);
 	} catch(exception) {
 		this.log("Erreur lecture de l'etat :" + exception.sdout);
 		this.lectureCapteur = '';
