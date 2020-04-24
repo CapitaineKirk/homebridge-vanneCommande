@@ -241,12 +241,12 @@ ValveCmdAccessory.prototype.handleEventData = function(data) {
     this.log('Evenement data');
   }
 
-	try {
-		this.lectureCapteur = data.toString('utf-8').substring(this.relais-1,this.relais);
-	} catch(exception) {
-		this.log("Erreur lecture de l'etat :" + exception.sdout);
-		this.lectureCapteur = '';
-	}
+  try {
+    this.lectureCapteur = data.toString('utf-8').substring(this.relais-1,this.relais);
+  } catch(exception) {
+    this.log("Erreur lecture de l'etat :" + exception.sdout);
+    this.lectureCapteur = '';
+  }
   if(this.debug) {
     this.log('Donnees : ' + this.lectureCapteur);
   }
@@ -309,28 +309,28 @@ ValveCmdAccessory.prototype.monitorState = function() {
     }
   }
 
-	switch(accessory.lectureCapteur) {
-		case '1' :
-			accessory.capteurValveOuvert = true;
-			accessory.capteurValveEnDefaut = false;
-			if(accessory.debug) {
-				accessory.log('Etat du capteur de ' + accessory.name + ' est (ON) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
-			}
-			break;
-		case '0' :
-			accessory.capteurValveOuvert = false;
-			accessory.capteurValveEnDefaut = false;
-			if(accessory.debug) {
-				accessory.log('Etat du capteur de ' + accessory.name + ' est (OFF) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
-			}
-			break;
-		default :
-			accessory.capteurValveEnDefaut = true;
-			if(accessory.debug) {
-				accessory.log('Etat du capteur de ' + accessory.name + ' est (KO) : ' + lectureCapteur + '(' + accessory.capteurValveEnDefaut + ')');
-			}
-			break;
-	}
+  switch(accessory.lectureCapteur) {
+    case '1' :
+      accessory.capteurValveOuvert = true;
+      accessory.capteurValveEnDefaut = false;
+      if(accessory.debug) {
+        accessory.log('Etat du capteur de ' + accessory.name + ' est (ON) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
+      }
+      break;
+    case '0' :
+      accessory.capteurValveOuvert = false;
+      accessory.capteurValveEnDefaut = false;
+      if(accessory.debug) {
+        accessory.log('Etat du capteur de ' + accessory.name + ' est (OFF) : ' + lectureCapteur + '(' + accessory.capteurValveOuvert + ')');
+      }
+      break;
+    default :
+      accessory.capteurValveEnDefaut = true;
+      if(accessory.debug) {
+        accessory.log('Etat du capteur de ' + accessory.name + ' est (KO) : ' + lectureCapteur + '(' + accessory.capteurValveEnDefaut + ')');
+      }
+      break;
+  }
 
   if ((accessory.capteurValveEnDefaut && (accessory.etatValveEnDefaut == Characteristic.StatusFault.NO_FAULT)) ||
       (!accessory.capteurValveEnDefaut && (accessory.etatValveEnDefaut == Characteristic.StatusFault.GENERAL_FAULT))) {
@@ -355,12 +355,12 @@ ValveCmdAccessory.prototype.monitorState = function() {
         if(accessory.etatValveActuel != Characteristic.InUse.IN_USE) {
           accessory.etatValveActuel = Characteristic.InUse.IN_USE;
           accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
-					accessory.dateDebut = new Date();
-					// si mode manuel et duree demandee != 0
-					if((accessory.modeManuel) && (accessory.dureeDemandee != 0)) {
-						accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(accessory.dureeDemandee);
-						accessory.log("Mode manuel, durée demandée = " + accessory.dureeDemandee + " s");
-					}
+          accessory.dateDebut = new Date();
+          // si mode manuel et duree demandee != 0
+          if((accessory.modeManuel) && (accessory.dureeDemandee != 0)) {
+            accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(accessory.dureeDemandee);
+            accessory.log("Mode manuel, durée demandée = " + accessory.dureeDemandee + " s");
+          }
         }
       }
     } else {
@@ -372,8 +372,8 @@ ValveCmdAccessory.prototype.monitorState = function() {
         if(accessory.etatValveActuel != Characteristic.InUse.NOT_IN_USE) {
           accessory.etatValveActuel = Characteristic.InUse.NOT_IN_USE;
           accessory.valveService.getCharacteristic(Characteristic.InUse).updateValue(accessory.etatValveActuel);
-					// ne pas oublier de remettre a zero le compteur de temps restant
-					accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(0);
+          // ne pas oublier de remettre a zero le compteur de temps restant
+          accessory.valveService.getCharacteristic(Characteristic.RemainingDuration).updateValue(0);
         }
       }
     }
@@ -400,7 +400,7 @@ ValveCmdAccessory.prototype.monitorState = function() {
     try {
       accessory.socket.write(commande);
     } catch(exception) {
-	    accessory.log("Erreur d\'exécution de la commande : " + exception.sdout);
+      accessory.log("Erreur d\'exécution de la commande : " + exception.sdout);
     }
   }
 
