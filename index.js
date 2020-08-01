@@ -243,23 +243,23 @@ ValveCmdAccessory.prototype.handleEventData = function(data) {
 
   try {
     this.lectureCapteur = data.toString('utf-8').substring(this.relais-1,this.relais);
+    // le fonctionnement des relais supplémentaires est inverse (0 = Actif, 1 =Inactif)
+    if(this.relais > 2) {
+		 switch(this.lectureCapteur) {
+			 case '1' :
+				 this.lectureCapteur = '0';
+			 break;
+			 case '0' :
+				 this.lectureCapteur = '1';
+			 break;
+			 }
+		}
   } catch(exception) {
     this.log("Erreur lecture de l'etat :" + exception.sdout);
     this.lectureCapteur = '';
   }
   if(this.debug) {
     this.log('Donnees : ' + this.lectureCapteur);
-    // le fonctionnement des relais supplémentaires est inverse (0 = Actif, 1 =Inactif)
-    if(this.relais > 2) {
-		 switch(this.lectureCapteur) {
-			 case '1' :
-				 this.lectureCapteur = 0;
-			 break;
-			 case '0' :
-				 this.lectureCapteur = 1;
-			 break;
-			 }
-		}
   }
   if (this.stateTimer) {
     clearTimeout(this.stateTimer);
