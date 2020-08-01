@@ -249,6 +249,17 @@ ValveCmdAccessory.prototype.handleEventData = function(data) {
   }
   if(this.debug) {
     this.log('Donnees : ' + this.lectureCapteur);
+    // le fonctionnement des relais supplémentaires est inverse (0 = Actif, 1 =Inactif)
+    if(this.relais > 2) {
+		 switch(this.lectureCapteur) {
+			 case '1' :
+				 this.lectureCapteur = 0;
+			 break;
+			 case '0' :
+				 this.lectureCapteur = 1;
+			 break;
+			 }
+		}
   }
   if (this.stateTimer) {
     clearTimeout(this.stateTimer);
@@ -349,7 +360,12 @@ ValveCmdAccessory.prototype.monitorState = function() {
     if(accessory.capteurValveOuvert) {
       if(accessory.etatValveDemande == Characteristic.Active.INACTIVE) {
         accessory.log("Etat demande de " + accessory.name + " est : INACTIVE");
-        commande = '2' + this.relais;
+        // le fonctionnement des relais supplémentaires est inverse (0 = Actif, 1 =Inactif)
+        if(this.relais > 2) {
+          commande = '1' + this.relais;
+        } else {
+          commande = '2' + this.relais;
+        }
         valveChange = true;
       } else {
         if(accessory.etatValveActuel != Characteristic.InUse.IN_USE) {
@@ -366,7 +382,11 @@ ValveCmdAccessory.prototype.monitorState = function() {
     } else {
       if(accessory.etatValveDemande == Characteristic.Active.ACTIVE) {
         accessory.log("Etat demande de " + accessory.name + " est : ACTIVE");
-        commande = '1' + this.relais;
+        if(this.relais > 2) {
+          commande = '2' + this.relais;
+        } else {
+          commande = '1' + this.relais;
+        }
         valveChange = true;
       } else {
         if(accessory.etatValveActuel != Characteristic.InUse.NOT_IN_USE) {
