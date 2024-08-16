@@ -1,0 +1,26 @@
+{
+  "name": "homebridge-vannecommande",
+  "version": "1.0.0",
+  "description": "Accessoire pour piloter les vannes d'arrosage",
+  "engines": {
+   "homebridge": ">=0.2.0",
+   "node": ">=0.12.0"
+  },
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapitaineKirk/homebridge-vanneCommande.git"
+  },
+  "keywords": [
+    "homebridge-plugin"
+  ],
+  "author": "CapitaineKirk",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/CapitaineKirk/homebridge-vanneCommande/issues"
+  },
+  "homepage": "https://github.com/CapitaineKirk/homebridge-vanneCommande#readme"
+}
