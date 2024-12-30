@@ -91,6 +91,7 @@ function ValveCmdAccessory(log, config) {
   this.relais = config.relais;
   this.indice = config.indice;
   this.dureeDemandee = config.dureeDemandee || 0;
+  this.dureeRestante = config.dureeDemandee || 0;
   this.intervalLecture = config.intervalLecture || 1;
   this.etatValveDemande = Characteristic.Active.INACTIVE; //Etat initial
   this.etatValveActuel = Characteristic.InUse.NOT_IN_USE; //Etat initial
