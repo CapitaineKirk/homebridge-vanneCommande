@@ -211,7 +211,7 @@ ValveCmdAccessory.prototype.getStatusFault = function(callback) {
   var accessory = this;
 
   accessory.log('Appel de getStatusFault');
-  callback(null, accessory.etatEnDefaut);
+  callback(null, accessory.etatValveEnDefaut);
 }
 
 ValveCmdAccessory.prototype.handleEventConnect = function() {
